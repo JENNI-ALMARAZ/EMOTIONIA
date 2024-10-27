@@ -1,18 +1,17 @@
 import os
 import re
-from flask import Flask, request, render_template, redirect
 import cv2
 import mediapipe as mp
+import numpy as np
+from flask import Flask, request, render_template, redirect, Response
+from io import BytesIO
+from PIL import Image
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
 
 # Inicializar MediaPipe Face Mesh
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1, min_detection_confidence=0.5)
-
-def sanitize_filename(filename):
-    return re.sub(r'[^a-zA-Z0-9_.-]', '_', filename)
 
 def draw_cross(image, center, size=5, color=(0, 0, 255)):
     """Dibuja una cruz en la imagen en la posición especificada."""
@@ -20,8 +19,7 @@ def draw_cross(image, center, size=5, color=(0, 0, 255)):
     cv2.line(image, (x - size, y - size), (x + size, y + size), color, 2)
     cv2.line(image, (x + size, y - size), (x - size, y + size), color, 2)
 
-def process_image(image_path):
-    image = cv2.imread(image_path)
+def process_image(image):
     rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(rgb_image)
 
@@ -42,14 +40,9 @@ def process_image(image_path):
                 y = int(landmark.y * image.shape[0])
 
                 if idx in landmarks_mapping:
-                    # Dibuja una cruz roja en los puntos seleccionados
                     draw_cross(image, (x, y))
 
-    # Guardar la imagen procesada
-    output_image_path = os.path.splitext(image_path)[0] + '_processed.jpeg'
-    cv2.imwrite(output_image_path, image)
-
-    return output_image_path
+    return image
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -60,15 +53,19 @@ def index():
         if file.filename == '':
             return redirect(request.url)
         if file:
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            # Leer la imagen en memoria
+            in_memory_file = np.frombuffer(file.read(), np.uint8)
+            image = cv2.imdecode(in_memory_file, cv2.IMREAD_COLOR)
+            
+            # Procesar la imagen
+            processed_image = process_image(image)
 
-            sanitized_filename = sanitize_filename(file.filename)
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], sanitized_filename)
-            file.save(file_path)
+            # Convertir la imagen procesada a formato JPEG para mostrar en el navegador
+            _, buffer = cv2.imencode('.jpeg', processed_image)
+            processed_image_bytes = buffer.tobytes()
 
-            processed_image_path = process_image(file_path)
-
-            return render_template('result.html', image=processed_image_path)
+            # Enviar la imagen procesada como respuesta
+            return Response(processed_image_bytes, mimetype='image/jpeg')
 
     return render_template('index.html')
 
