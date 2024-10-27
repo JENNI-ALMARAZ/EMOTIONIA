@@ -3,7 +3,6 @@ import re
 from flask import Flask, request, render_template, redirect
 import cv2
 import mediapipe as mp
-import pandas as pd
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
@@ -26,25 +25,6 @@ def process_image(image_path):
     rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(rgb_image)
 
-    facial_points_dict = {
-        'left_eye_center_x': [None], 'left_eye_center_y': [None],
-        'right_eye_center_x': [None], 'right_eye_center_y': [None],
-        'left_eye_inner_corner_x': [None], 'left_eye_inner_corner_y': [None],
-        'left_eye_outer_corner_x': [None], 'left_eye_outer_corner_y': [None],
-        'right_eye_inner_corner_x': [None], 'right_eye_inner_corner_y': [None],
-        'right_eye_outer_corner_x': [None], 'right_eye_outer_corner_y': [None],
-        'left_eyebrow_inner_end_x': [None], 'left_eyebrow_inner_end_y': [None],
-        'left_eyebrow_outer_end_x': [None], 'left_eyebrow_outer_end_y': [None],
-        'right_eyebrow_inner_end_x': [None], 'right_eyebrow_inner_end_y': [None],
-        'right_eyebrow_outer_end_x': [None], 'right_eyebrow_outer_end_y': [None],
-        'nose_tip_x': [None], 'nose_tip_y': [None],
-        'mouth_left_corner_x': [None], 'mouth_left_corner_y': [None],
-        'mouth_right_corner_x': [None], 'mouth_right_corner_y': [None],
-        'mouth_center_top_lip_x': [None], 'mouth_center_top_lip_y': [None],
-        'mouth_center_bottom_lip_x': [None], 'mouth_center_bottom_lip_y': [None],
-        'Image': [image_path]
-    }
-
     if results.multi_face_landmarks:
         for face_landmarks in results.multi_face_landmarks:
             landmarks_mapping = {
@@ -58,17 +38,10 @@ def process_image(image_path):
             }
 
             for idx, landmark in enumerate(face_landmarks.landmark):
-                # Obtener coordenadas escaladas
                 x = int(landmark.x * image.shape[1])
                 y = int(landmark.y * image.shape[0])
 
-                # Verificar si el índice está en nuestro mapeo
                 if idx in landmarks_mapping:
-                    key_x = f"{landmarks_mapping[idx]}_x"
-                    key_y = f"{landmarks_mapping[idx]}_y"
-                    facial_points_dict[key_x][0] = x
-                    facial_points_dict[key_y][0] = y
-                    
                     # Dibuja una cruz roja en los puntos seleccionados
                     draw_cross(image, (x, y))
 
@@ -76,7 +49,7 @@ def process_image(image_path):
     output_image_path = os.path.splitext(image_path)[0] + '_processed.jpeg'
     cv2.imwrite(output_image_path, image)
 
-    return pd.DataFrame(facial_points_dict), output_image_path
+    return output_image_path
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -93,11 +66,9 @@ def index():
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], sanitized_filename)
             file.save(file_path)
 
-            df_facial_points, processed_image_path = process_image(file_path)
-            output_csv_path = os.path.join(app.config['UPLOAD_FOLDER'], 'facial_points.csv')
-            df_facial_points.to_csv(output_csv_path, index=False)
+            processed_image_path = process_image(file_path)
 
-            return render_template('result.html', image=processed_image_path, csv_file='facial_points.csv')
+            return render_template('result.html', image=processed_image_path)
 
     return render_template('index.html')
 
